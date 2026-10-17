@@ -1,0 +1,82 @@
+// ========================================================
+// TriageCI Prisma ORM Schema
+// Production-Optimized for High-Throughput CI/CD Triage
+// ========================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Recurring failure clusters aggregated by deterministic error signature
+model FailureCluster {
+  id                  Int          @id @default(autoincrement())
+  fingerprint         String       @unique(map: "ix_failure_clusters_fingerprint") @db.VarChar(128)
+  title               String       @db.VarChar(255)
+  category            String       @db.VarChar(64)
+  suggestedActionType String       @map("suggested_action_type") @db.VarChar(32) // "RERUN" or "FIX"
+  suggestedDirection  String       @map("suggested_direction") @db.Text
+  occurrenceCount     Int          @default(1) @map("occurrence_count")
+  firstSeen           DateTime     @default(now()) @map("first_seen")
+  lastSeen            DateTime     @default(now()) @updatedAt @map("last_seen")
+  status              String       @default("ACTIVE") @db.VarChar(32) // "ACTIVE", "RESOLVED", "IGNORED"
+  affectedRepos       Json         @default("[]") @map("affected_repos")
+  
+  // 1-to-many relation with failure logs
+  logs                FailureLog[]
+
+  // Production-tuned composite indexes
+  @@index([status, occurrenceCount(sort: Desc)], map: "idx_clusters_status_occ")
+  @@index([category, occurrenceCount(sort: Desc)], map: "idx_clusters_cat_occ")
+  @@index([category], map: "ix_failure_clusters_category")
+  @@map("failure_clusters")
+}
+
+/// Individual pipeline failure log ingestion & root-cause attribution
+model FailureLog {
+  id                   Int             @id @default(autoincrement())
+  provider             String          @default("github_actions") @db.VarChar(64)
+  repoName             String          @default("unknown-org/repo") @map("repo_name") @db.VarChar(255)
+  branch               String          @default("main") @db.VarChar(255)
+  commitSha            String          @default("HEAD") @map("commit_sha") @db.VarChar(64)
+  commitAuthor         String          @default("engineer") @map("commit_author") @db.VarChar(128)
+  prNumber             Int?            @map("pr_number")
+  workflowName         String          @default("CI Pipeline") @map("workflow_name") @db.VarChar(255)
+  jobName              String          @default("test") @map("job_name") @db.VarChar(255)
+
+  // Triage Diagnostic Outputs
+  exactFailingStep     String          @map("exact_failing_step") @db.VarChar(255)
+  rootCauseCategory    String          @map("root_cause_category") @db.VarChar(64)
+  rootCauseSummary     String          @map("root_cause_summary") @db.Text
+  actionType           String          @map("action_type") @db.VarChar(32) // "RERUN" or "FIX"
+  suggestedDirection   String          @map("suggested_direction") @db.Text
+  confidenceScore      Float           @default(0.9) @map("confidence_score")
+  fingerprint          String          @db.VarChar(128)
+
+  // Extracted Evidence Excerpt
+  extractedExcerpt     String          @map("extracted_excerpt") @db.Text
+  excerptStartLine     Int             @default(1) @map("excerpt_start_line")
+  excerptEndLine       Int             @default(1) @map("excerpt_end_line")
+  totalRawLines        Int             @default(0) @map("total_raw_lines")
+  rawLog               String?         @map("raw_log") @db.Text
+  prCommentMarkdown    String?         @map("pr_comment_markdown") @db.Text
+
+  // Foreign key relation to recurring cluster
+  clusterId            Int?            @map("cluster_id")
+  cluster              FailureCluster? @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime        @default(now()) @map("created_at")
+
+  // Production-tuned composite indexes
+  @@index([clusterId, createdAt(sort: Desc)], map: "idx_logs_cluster_created")
+  @@index([repoName, createdAt(sort: Desc)], map: "idx_logs_repo_created")
+  @@index([rootCauseCategory, createdAt(sort: Desc)], map: "idx_logs_cat_created")
+  @@index([actionType, createdAt(sort: Desc)], map: "idx_logs_action_created")
+  @@index([fingerprint, createdAt(sort: Desc)], map: "idx_logs_fingerprint_created")
+  @@index([createdAt], map: "ix_failure_logs_created_at")
+  @@map("failure_logs")
+}

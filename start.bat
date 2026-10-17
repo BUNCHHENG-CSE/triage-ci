@@ -7,7 +7,9 @@ timeout /t 2 >nul
 start "TriageCI Frontend [Port 5173]" cmd /k "%~dp0start_frontend.bat"
 echo.
 echo TriageCI services launched!
-echo Backend:  http://localhost:8000
-echo Frontend: http://localhost:5173
-echo API Docs: http://localhost:8000/docs
+echo - Web Dashboard: http://localhost:5173
+echo - API Server:    http://localhost:8000
+echo - Swagger Docs:  http://localhost:8000/docs
+echo - PostgreSQL DB: localhost:5434 (WSL Docker)
+echo - Prisma Studio: http://localhost:5555 (run start_prisma_studio.bat)
 echo ===================================================

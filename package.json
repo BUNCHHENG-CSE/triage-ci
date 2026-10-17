@@ -1,0 +1,18 @@
+{
+  "name": "cicd-failure-log-triage",
+  "version": "1.0.0",
+  "description": "The intelligent, noise-pruned failure attribution layer for engineering teams shipping 5-50 times a day.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "prisma:generate": "node node_modules/prisma/build/index.js generate",
+    "prisma:push": "node node_modules/prisma/build/index.js db push",
+    "prisma:pull": "node node_modules/prisma/build/index.js db pull",
+    "prisma:studio": "node node_modules/prisma/build/index.js studio --port 5555",
+    "prisma:test": "node scripts/test_prisma.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "prisma": "6.19.3"
+  }
+}

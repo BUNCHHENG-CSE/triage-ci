@@ -164,6 +164,75 @@ TriageCI is optimized for high-throughput production PostgreSQL (such as AWS RDS
 
 ---
 
+## ⚡ Prisma ORM Optimization & Type-Safe Operations
+
+TriageCI features a **Dual-ORM Architecture** bridging the high-performance Python analytics engine with modern, type-safe TypeScript tooling:
+* **Python Backend:** Uses SQLAlchemy 2.0 with asynchronous QueuePool and `psycopg3` for high-throughput regex normalization, raw log processing, and CI webhook ingestion.
+* **TypeScript & Node.js Ecosystem:** Uses **Prisma ORM (`@prisma/client`)** with `prisma/schema.prisma` for 100% compile-time type safety, atomic upserts, relational querying, and real-time database administration via **Prisma Studio**.
+
+### 1. Prisma Schema (`prisma/schema.prisma`)
+The Prisma schema maps directly to production PostgreSQL tables (`failure_clusters`, `failure_logs`) with full relational integrity and composite indexes:
+
+* **Relations:** `FailureCluster` has a `1-to-many` relation to `FailureLog` with cascading reference links:
+  ```prisma
+  model FailureCluster {
+    id                 String       @id @default(uuid())
+    fingerprint        String       @unique @db.VarChar(64)
+    rootCauseCategory  String       @map("root_cause_category") @db.VarChar(64)
+    failureStep        String       @map("failure_step") @db.VarChar(255)
+    actionType         String       @map("action_type") @db.VarChar(32)
+    occurrenceCount    Int          @default(1) @map("occurrence_count")
+    status             String       @default("OPEN") @db.VarChar(32)
+    logs               FailureLog[]
+    // Composite indexes for query acceleration
+    @@index([status, occurrenceCount(sort: Desc)], map: "idx_clusters_status_occ")
+    @@index([actionType, occurrenceCount(sort: Desc)], map: "idx_clusters_action_occ")
+    @@map("failure_clusters")
+  }
+  ```
+* **Performance Indexes:** 15 composite indexes defined natively in Prisma schema matching PostgreSQL physical indexes for sub-millisecond filtering.
+
+### 2. Atomic Operations & Concurrency Protection
+Prisma client methods provide atomic counter updates without race conditions:
+```typescript
+// Atomically increment cluster occurrences when a new matching failure is ingested
+const updatedCluster = await prisma.failureCluster.update({
+  where: { fingerprint: "35ef2e49c7198a2e5e1a1bfa5ea4b34c38d3882bbd5e229e92cf460875b48bc2" },
+  data: {
+    occurrenceCount: { increment: 1 },
+    lastSeenAt: new Date(),
+  },
+});
+```
+
+### 3. Visual Database Management: Prisma Studio
+Prisma Studio provides an interactive visual web interface to inspect, search, filter, and edit records in real time without writing manual SQL:
+* **Launch Script:** Double-click `start_prisma_studio.bat` or run:
+  ```powershell
+  npm run prisma:studio
+  ```
+* Studio binds to **`http://localhost:5555`**, connecting securely to the WSL Docker PostgreSQL database on port 5434.
+
+### 4. Prisma NPM Scripts & CLI Workflow
+```powershell
+# 1. Generate / Regenerate Prisma Client TypeScript types
+npm run prisma:generate
+
+# 2. Run automated Prisma verification test (tests relations, atomic upserts, groupings)
+npm run prisma:test
+
+# 3. Pull latest schema modifications from PostgreSQL
+npm run prisma:pull
+
+# 4. Push schema migrations directly to PostgreSQL
+npm run prisma:push
+
+# 5. Open Prisma Studio visual GUI
+npm run prisma:studio
+```
+
+---
+
 ## 🚀 Quick Start Guide
 
 ### 1. Requirements
@@ -247,7 +316,7 @@ CICD Failure Log Triage/
 │   │   │   ├── llm_provider.py    # Multi-provider LLM adapter + heuristic fallback
 │   │   │   ├── pr_commenter.py    # PR comment markdown & Slack card generator
 │   │   │   └── triage_engine.py   # Main orchestrator
-│   │   ├── models/          # SQLAlchemy ORM & Pydantic models
+│   │   ├── models/          # SQLAlchemy ORM models & database connection pool
 │   │   ├── data/            # 20 real failure logs & ground-truth specs
 │   │   └── main.py          # FastAPI application & startup seed
 │   ├── tests/               # Pytest suite with benchmark validation
@@ -261,7 +330,17 @@ CICD Failure Log Triage/
 │   │   └── index.css        # Tailwind v4 styling
 │   ├── package.json
 │   └── vite.config.ts
-├── start.bat                # One-click start script
-├── run_benchmark.bat        # One-click benchmark runner
+├── prisma/
+│   └── schema.prisma        # Prisma ORM schema with relations & 15 composite indexes
+├── docker/
+│   └── init-db.sql          # PostgreSQL extensions (uuid-ossp, pg_trgm, btree_gin)
+├── scripts/
+│   ├── wsl-docker.sh        # WSL Docker container lifecycle manager
+│   └── test_prisma.mjs      # Automated Prisma ORM integration test suite
+├── docker-compose.yml       # Production-tuned PostgreSQL 16 Alpine configuration
+├── start.bat                # One-click start script (Backend + Frontend)
+├── start_postgres_wsl.bat   # One-click WSL Docker PostgreSQL launcher
+├── start_prisma_studio.bat  # Visual Database GUI launcher (Port 5555)
+├── run_benchmark.bat        # One-click 20-log benchmark runner
 └── README.md
 ```
