@@ -1,0 +1,37 @@
+services:
+  triageci-postgres:
+    image: postgres:16-alpine
+    container_name: triageci-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-triageci}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-triageci_secure_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-triageci}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - triageci_pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=64MB
+        -c effective_cache_size=768MB
+        -c wal_buffers=16MB
+        -c checkpoint_completion_target=0.9
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c max_connections=100
+        -c log_min_duration_statement=200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-triageci} -d ${POSTGRES_DB:-triageci}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  triageci_pgdata:
+    name: triageci_pgdata

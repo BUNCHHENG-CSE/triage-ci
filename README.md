@@ -121,6 +121,49 @@ Anchored directly to **engineering hours saved per week**:
 
 ---
 
+## 🐘 Production PostgreSQL & WSL Docker Optimization
+
+TriageCI is optimized for high-throughput production PostgreSQL (such as AWS RDS, GCP Cloud SQL, or local WSL Docker):
+
+### 1. Production PostgreSQL Tuning Parameters (`docker-compose.yml`)
+* **Memory & Buffers:** `shared_buffers = 256MB`, `effective_cache_size = 768MB`, `work_mem = 16MB`, `maintenance_work_mem = 64MB`.
+* **SSD/NVMe Query Planner:** `random_page_cost = 1.1`, `effective_io_concurrency = 200`, `default_statistics_target = 100`.
+* **WAL & Checkpoint Optimization:** `checkpoint_completion_target = 0.9`, `wal_buffers = 16MB`, `min_wal_size = 512MB`, `max_wal_size = 2GB`.
+* **Slow Query Diagnostics:** `log_min_duration_statement = 200ms` (flags bottlenecks automatically).
+
+### 2. High-Performance Schema & Composite Indexes (15 Verified Indexes)
+* `idx_logs_cluster_created`: `(cluster_id, created_at DESC)` for instantaneous cluster log lookups.
+* `idx_logs_repo_created`: `(repo_name, created_at DESC)` for per-repository dashboard filtering.
+* `idx_logs_action_created`: `(action_type, created_at DESC)` for RERUN vs FIX segregation.
+* `idx_logs_cat_created`: `(root_cause_category, created_at DESC)` for domain aggregation.
+* `idx_clusters_status_occ`: `(status, occurrence_count DESC)` for ranking recurring failure spikes.
+* Extensions: `uuid-ossp`, `pg_trgm` (trigram text similarity), and `btree_gin` enabled in `docker/init-db.sql`.
+
+### 3. Concurrency-Safe Cluster Tracking
+* High-volume CI webhooks arriving simultaneously are handled with row-level locking (`with_for_update()`) on PostgreSQL, preventing race conditions, lost updates, or duplicate key collisions.
+
+### 4. Connection Pooling (`QueuePool` + `psycopg3`)
+* `pool_size = 20` (handles concurrent webhook bursts).
+* `max_overflow = 10`.
+* `pool_recycle = 1800s` (recycles connections every 30 minutes to prevent stale proxy drops).
+* `pool_pre_ping = True` (automatically detects dead connections and reconnects without dropping HTTP requests).
+
+### 5. Managing WSL Docker PostgreSQL
+* **Start PostgreSQL via WSL:** Double-click `start_postgres_wsl.bat` or run:
+  ```powershell
+  .\start_postgres_wsl.bat
+  ```
+* **WSL CLI Control (`scripts/wsl-docker.sh`):**
+  ```bash
+  ./scripts/wsl-docker.sh start   # Starts PostgreSQL container and waits for healthcheck
+  ./scripts/wsl-docker.sh status  # Displays container status & port mapping (5434:5432)
+  ./scripts/wsl-docker.sh logs    # Streams PostgreSQL server logs
+  ./scripts/wsl-docker.sh psql    # Opens interactive psql session
+  ./scripts/wsl-docker.sh stop    # Clean shutdown
+  ```
+
+---
+
 ## 🚀 Quick Start Guide
 
 ### 1. Requirements

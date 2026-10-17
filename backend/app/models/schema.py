@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import List, Optional
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, JSON, Index
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, Field
 from app.models.database import Base
@@ -11,6 +11,10 @@ def utc_now():
 # SQLAlchemy ORM Models
 class FailureCluster(Base):
     __tablename__ = "failure_clusters"
+    __table_args__ = (
+        Index("idx_clusters_status_occ", "status", "occurrence_count"),
+        Index("idx_clusters_cat_occ", "category", "occurrence_count"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     fingerprint = Column(String(128), unique=True, index=True, nullable=False)
@@ -30,6 +34,13 @@ class FailureCluster(Base):
 
 class FailureLog(Base):
     __tablename__ = "failure_logs"
+    __table_args__ = (
+        Index("idx_logs_cluster_created", "cluster_id", "created_at"),
+        Index("idx_logs_repo_created", "repo_name", "created_at"),
+        Index("idx_logs_cat_created", "root_cause_category", "created_at"),
+        Index("idx_logs_action_created", "action_type", "created_at"),
+        Index("idx_logs_fingerprint_created", "fingerprint", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     provider = Column(String(64), default="github_actions")  # github_actions, gitlab_ci, jenkins, manual

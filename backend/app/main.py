@@ -20,8 +20,8 @@ def seed_initial_demo_data():
     """
     db = SessionLocal()
     try:
-        # Check if already seeded
-        if db.query(FailureCluster).count() > 0:
+        # Check if demo data already seeded
+        if db.query(FailureCluster).filter(FailureCluster.fingerprint == "cred_aws_sts:cred_aws_sts_expired:generic").first():
             return
 
         # Seed recurring failure cluster 1: "this same expired credential has caused 14 failures this month"

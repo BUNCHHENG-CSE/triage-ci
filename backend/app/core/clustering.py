@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Tuple, List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.models.schema import FailureCluster
 
 def get_or_create_cluster(
@@ -14,14 +15,22 @@ def get_or_create_cluster(
 ) -> Tuple[FailureCluster, int]:
     """
     Finds or creates a failure cluster for recurring error tracking.
+    Uses row-level locking (with_for_update) on PostgreSQL to prevent concurrency races.
     Returns (cluster, occurrence_count).
     """
-    cluster = db.query(FailureCluster).filter(FailureCluster.fingerprint == fingerprint).first()
+    bind = db.get_bind()
+    is_sqlite = bind and bind.dialect.name == "sqlite"
+
+    # Query with row lock on PostgreSQL to guarantee thread/process concurrency safety
+    query = db.query(FailureCluster).filter(FailureCluster.fingerprint == fingerprint)
+    if not is_sqlite:
+        query = query.with_for_update()
+
+    cluster = query.first()
     
     if cluster:
         cluster.occurrence_count += 1
         cluster.last_seen = datetime.now(timezone.utc)
-        # Keep affected repositories list updated
         current_repos = list(cluster.affected_repos or [])
         if repo_name and repo_name not in current_repos:
             current_repos.append(repo_name)
@@ -43,7 +52,20 @@ def get_or_create_cluster(
             status="ACTIVE",
             affected_repos=[repo_name] if repo_name else []
         )
-        db.add(new_cluster)
-        db.commit()
-        db.refresh(new_cluster)
-        return new_cluster, 1
+        try:
+            db.add(new_cluster)
+            db.commit()
+            db.refresh(new_cluster)
+            return new_cluster, 1
+        except IntegrityError:
+            # Concurrent worker created the cluster in between: rollback and update existing
+            db.rollback()
+            return get_or_create_cluster(
+                db=db,
+                fingerprint=fingerprint,
+                title=title,
+                category=category,
+                suggested_action_type=suggested_action_type,
+                suggested_direction=suggested_direction,
+                repo_name=repo_name
+            )
