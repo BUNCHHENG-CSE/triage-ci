@@ -18,7 +18,8 @@ def test_postgresql_composite_indexes_exist():
     """
     Verifies that high-performance composite indexes are active.
     """
-    Base.metadata.create_all(bind=engine)
+    from app.models.database import init_db
+    init_db()
     if "postgresql" in settings.DATABASE_URL:
         with engine.connect() as conn:
             idx_names = [

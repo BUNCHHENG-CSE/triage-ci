@@ -61,7 +61,17 @@ def init_db(max_retries: int = 5, retry_delay: float = 2.0):
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             Base.metadata.create_all(bind=engine)
-            logger.info("Database tables verified successfully.")
+            
+            # Ensure composite indexes exist even if tables were pre-created
+            if not str(engine.url).startswith("sqlite"):
+                with engine.connect() as conn:
+                    for table in Base.metadata.tables.values():
+                        for idx in table.indexes:
+                            cols = ", ".join([c.name for c in idx.columns])
+                            conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx.name} ON {table.name} ({cols});"))
+                    conn.commit()
+
+            logger.info("Database tables and composite indexes verified successfully.")
             return
         except Exception as e:
             if attempt < max_retries:
