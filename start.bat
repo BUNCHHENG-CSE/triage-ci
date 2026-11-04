@@ -1,15 +1,10 @@
 @echo off
-echo ===================================================
-echo Launching TriageCI (Backend + Frontend)
-echo ===================================================
-start "TriageCI Backend [Port 8000]" cmd /k "%~dp0start_backend.bat"
-timeout /t 2 >nul
-start "TriageCI Frontend [Port 5173]" cmd /k "%~dp0start_frontend.bat"
+echo ========================================================
+echo Launching TCT TriageCI Next.js Full-Stack (tct-triage-ci)
+echo ========================================================
 echo.
-echo TriageCI services launched!
-echo - Web Dashboard: http://localhost:5173
-echo - API Server:    http://localhost:8000
-echo - Swagger Docs:  http://localhost:8000/docs
-echo - PostgreSQL DB: localhost:5434 (WSL Docker)
-echo - Prisma Studio: http://localhost:5555 (run start_prisma_studio.bat)
-echo ===================================================
+echo Database: Local SQLite (triageci.db) or Neon PostgreSQL (via DATABASE_URL in .env)
+echo Starting Next.js with Bun...
+echo Dashboard ^& API: http://localhost:3000
+echo.
+bun run dev

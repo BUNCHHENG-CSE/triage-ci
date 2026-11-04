@@ -1,11 +1,39 @@
+import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.models.database import get_db
 from app.models.schema import TriageRequest, TriageResult, FailureLog
 from app.core.triage_engine import triage_engine
+from app.core.pattern_library import get_remediation_playbook
 
 router = APIRouter(prefix="/api/triage", tags=["Triage"])
+
+def extract_playbook(log: FailureLog):
+    commands = []
+    patch = log.remediation_patch
+    if log.remediation_commands:
+        if isinstance(log.remediation_commands, list):
+            commands = log.remediation_commands
+        elif isinstance(log.remediation_commands, str):
+            try:
+                commands = json.loads(log.remediation_commands)
+            except Exception:
+                commands = [log.remediation_commands]
+    
+    if not commands:
+        pb = get_remediation_playbook(
+            pattern_id="GENERIC",
+            category=log.root_cause_category,
+            action_type=log.action_type,
+            entities={"entity": log.exact_failing_step}
+        )
+        commands = pb.get("commands", [])
+        if not patch:
+            patch = pb.get("patch_diff")
+            
+    return commands, patch
 
 @router.post("", response_model=TriageResult)
 async def analyze_failure_log(
@@ -27,12 +55,45 @@ async def analyze_failure_log(
 def list_triage_history(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None, description="Search across repo, author, branch, failing step, error anchor"),
+    category: Optional[str] = Query(None, description="Filter by failure category"),
+    action_type: Optional[str] = Query(None, description="Filter by RERUN or FIX"),
+    provider: Optional[str] = Query(None, description="Filter by CI provider"),
+    repo_name: Optional[str] = Query(None, description="Filter by repo name"),
     db: Session = Depends(get_db)
 ):
     """
-    Returns recent failure triage reports.
+    Returns recent failure triage reports with multi-faceted search and filtering.
     """
-    logs = db.query(FailureLog).order_by(FailureLog.created_at.desc()).offset(offset).limit(limit).all()
+    query = db.query(FailureLog)
+
+    if category and category.upper() != "ALL":
+        query = query.filter(FailureLog.root_cause_category == category.upper())
+
+    if action_type and action_type.upper() != "ALL":
+        query = query.filter(FailureLog.action_type == action_type.upper())
+
+    if provider and provider.lower() != "all":
+        query = query.filter(FailureLog.provider == provider.lower())
+
+    if repo_name:
+        query = query.filter(FailureLog.repo_name.ilike(f"%{repo_name}%"))
+
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                FailureLog.repo_name.ilike(term),
+                FailureLog.branch.ilike(term),
+                FailureLog.commit_sha.ilike(term),
+                FailureLog.commit_author.ilike(term),
+                FailureLog.exact_failing_step.ilike(term),
+                FailureLog.root_cause_summary.ilike(term),
+                FailureLog.fingerprint.ilike(term)
+            )
+        )
+
+    logs = query.order_by(FailureLog.created_at.desc()).offset(offset).limit(limit).all()
     
     results = []
     for log in logs:
@@ -52,6 +113,7 @@ def list_triage_history(
                 excerpt_lines.append({"line_number": num, "content": content, "is_anchor": False})
 
         cluster_count = log.cluster.occurrence_count if log.cluster else 1
+        remediation_cmds, remediation_patch = extract_playbook(log)
 
         results.append(TriageResult(
             id=log.id,
@@ -75,6 +137,8 @@ def list_triage_history(
             total_raw_lines=log.total_raw_lines,
             reduction_percentage=round(max(0, log.total_raw_lines - len(excerpt_lines)) / max(1, log.total_raw_lines) * 100.0, 1),
             pr_comment_markdown=log.pr_comment_markdown or "",
+            remediation_commands=remediation_cmds,
+            remediation_patch=remediation_patch,
             cluster_id=log.cluster_id,
             cluster_occurrence_count=cluster_count,
             created_at=log.created_at
@@ -92,6 +156,7 @@ def get_triage_detail(
         raise HTTPException(status_code=404, detail="Triage report not found")
         
     cluster_count = log.cluster.occurrence_count if log.cluster else 1
+    remediation_cmds, remediation_patch = extract_playbook(log)
     
     return TriageResult(
         id=log.id,
@@ -115,7 +180,36 @@ def get_triage_detail(
         total_raw_lines=log.total_raw_lines,
         reduction_percentage=98.0,
         pr_comment_markdown=log.pr_comment_markdown or "",
+        remediation_commands=remediation_cmds,
+        remediation_patch=remediation_patch,
         cluster_id=log.cluster_id,
         cluster_occurrence_count=cluster_count,
         created_at=log.created_at
     )
+
+
+@router.delete("/{triage_id}")
+def delete_triage_log(
+    triage_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Deletes a specific triage log from history.
+    """
+    log = db.query(FailureLog).filter(FailureLog.id == triage_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Triage report not found")
+    
+    db.delete(log)
+    db.commit()
+    return {"status": "deleted", "id": triage_id}
+
+
+@router.post("/clear-all")
+def clear_all_history(db: Session = Depends(get_db)):
+    """
+    Clears all failure logs (preserving clusters).
+    """
+    count = db.query(FailureLog).delete()
+    db.commit()
+    return {"status": "cleared", "records_removed": count}

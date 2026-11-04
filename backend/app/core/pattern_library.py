@@ -12,7 +12,9 @@ class PatternMatch:
         suggested_direction: str,
         confidence: float,
         fingerprint: str,
-        extracted_entities: Dict[str, str] = None
+        extracted_entities: Dict[str, str] = None,
+        remediation_commands: List[str] = None,
+        remediation_patch: Optional[str] = None
     ):
         self.pattern_id = pattern_id
         self.category = category
@@ -23,6 +25,8 @@ class PatternMatch:
         self.confidence = confidence
         self.fingerprint = fingerprint
         self.extracted_entities = extracted_entities or {}
+        self.remediation_commands = remediation_commands or []
+        self.remediation_patch = remediation_patch
 
 
 class FailurePattern:
@@ -70,6 +74,14 @@ class FailurePattern:
                 safe_entity = re.sub(r'[^a-zA-Z0-9_]', '_', entity_name)[:40] if entity_name else "generic"
                 fingerprint = f"{self.fingerprint_prefix}:{self.pattern_id}:{safe_entity}".lower()
 
+                # Generate remediation playbook
+                playbook = get_remediation_playbook(
+                    pattern_id=self.pattern_id,
+                    category=self.category,
+                    action_type=self.action_type,
+                    entities={"entity": entity_name, **groups}
+                )
+
                 return PatternMatch(
                     pattern_id=self.pattern_id,
                     category=self.category,
@@ -79,9 +91,271 @@ class FailurePattern:
                     suggested_direction=self.suggested_direction,
                     confidence=self.confidence,
                     fingerprint=fingerprint,
-                    extracted_entities={"entity": entity_name, **groups}
+                    extracted_entities={"entity": entity_name, **groups},
+                    remediation_commands=playbook.get("commands", []),
+                    remediation_patch=playbook.get("patch_diff")
                 )
         return None
+
+
+def get_remediation_playbook(
+    pattern_id: str,
+    category: str,
+    action_type: str,
+    entities: Dict[str, str] = None
+) -> Dict[str, Any]:
+    """
+    Produces deterministic, copyable CLI reproduction commands and config patch diffs
+    tailored to the identified root cause.
+    """
+    entities = entities or {}
+    entity = entities.get("entity", "")
+    
+    if pattern_id == "CRED_AWS_STS_EXPIRED":
+        return {
+            "commands": [
+                "aws sts get-caller-identity",
+                "aws sso login --profile staging",
+                "gh secret set AWS_SESSION_TOKEN --body \"<FRESH_SESSION_TOKEN>\""
+            ],
+            "patch_diff": """# .github/workflows/deploy.yml
+- uses: aws-actions/configure-aws-credentials@v4
+  with:
+    role-to-assume: arn:aws:iam::123456789012:role/DeployRole
+    aws-region: us-east-1
++   role-duration-seconds: 3600"""
+        }
+    elif pattern_id == "CRED_GITHUB_PAT_EXPIRED":
+        return {
+            "commands": [
+                "gh auth login --scopes repo,workflow",
+                "gh secret set GH_TOKEN --body \"<NEW_PAT_TOKEN>\""
+            ],
+            "patch_diff": """# .github/workflows/ci.yml
+- uses: actions/checkout@v4
++ uses: actions/checkout@v4
++   with:
++     token: ${{ secrets.PAT_GITHUB }}"""
+        }
+    elif pattern_id == "CRED_DOCKER_UNAUTHORIZED":
+        return {
+            "commands": [
+                f"docker login {entity or 'docker.io'}",
+                "gh secret set DOCKER_PASSWORD --body \"<ACCESS_TOKEN>\""
+            ],
+            "patch_diff": """- uses: docker/login-action@v3
+  with:
+-   password: ${{ secrets.OLD_PASSWORD }}
++   password: ${{ secrets.DOCKERHUB_TOKEN }}"""
+        }
+    elif pattern_id == "DEP_NPM_ERESOLVE":
+        return {
+            "commands": [
+                "npm install --legacy-peer-deps",
+                "npm dedupe",
+                "git add package.json package-lock.json && git commit -m \"fix(deps): reconcile peer dependencies\""
+            ],
+            "patch_diff": """# .github/workflows/ci.yml
+- run: npm ci
++ run: npm ci --legacy-peer-deps"""
+        }
+    elif pattern_id == "DEP_PIP_RESOLVELIB_FAIL":
+        return {
+            "commands": [
+                "pip install --upgrade pip setuptools wheel",
+                f"pip install {entity or 'package'} --use-deprecated=legacy-resolver",
+                "pip freeze > requirements.txt"
+            ],
+            "patch_diff": """# requirements.txt
+- conflicting-pkg==1.0.0
++ conflicting-pkg>=1.0,<2.0"""
+        }
+    elif pattern_id == "RES_JVM_OOM":
+        return {
+            "commands": [
+                "export GRADLE_OPTS=\"-Xmx4096m -XX:MaxMetaspaceSize=1024m\"",
+                "./gradlew --stop && ./gradlew test --no-daemon"
+            ],
+            "patch_diff": """# gradle.properties or CI runner env
++ org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m
++ org.gradle.parallel=false"""
+        }
+    elif pattern_id == "RES_OOM_EXIT_137":
+        return {
+            "commands": [
+                "docker system prune -af --volumes",
+                "npm test -- --maxWorkers=50%"
+            ],
+            "patch_diff": """# In CI runner job config
+- runs-on: ubuntu-latest
++ runs-on: ubuntu-latest-8core  # Or limit test worker concurrency
+- run: npm test
++ run: npm test -- --maxWorkers=2"""
+        }
+    elif pattern_id == "FLK_JEST_ASYNC_TIMEOUT":
+        return {
+            "commands": [
+                "npx jest --testTimeout=15000 --detectOpenHandles",
+                "gh run rerun <RUN_ID> --failed"
+            ],
+            "patch_diff": """// jest.config.js or test file
+- jest.setTimeout(5000);
++ jest.setTimeout(15000); // Allow async network margin"""
+        }
+    elif pattern_id == "FLK_GO_RACE_CONDITION":
+        return {
+            "commands": [
+                "go test -race -v -count=1 ./...",
+                "go vet ./..."
+            ],
+            "patch_diff": """// Synchronize concurrent variable access with sync.Mutex:
++ var mu sync.RWMutex
++ mu.Lock()
++ defer mu.Unlock()"""
+        }
+    elif pattern_id == "FLK_PORT_IN_USE":
+        return {
+            "commands": [
+                "lsof -ti :3000 | xargs kill -9 2>/dev/null || true",
+                "gh run rerun <RUN_ID> --failed"
+            ],
+            "patch_diff": """# Use ephemeral dynamic port (port 0) for CI testing
+- env:
+-   PORT: 3000
++ env:
++   PORT: 0"""
+        }
+    elif pattern_id == "FLK_DB_DEADLOCK":
+        return {
+            "commands": [
+                "gh run rerun <RUN_ID> --failed",
+                "pytest --dist=loadscope"
+            ],
+            "patch_diff": """# In test execution command:
+- pytest -n auto
++ pytest -n auto --dist=loadscope"""
+        }
+    elif pattern_id == "COMP_TS_ERROR":
+        return {
+            "commands": [
+                "npx tsc --noEmit --pretty"
+            ],
+            "patch_diff": """// Reconcile TypeScript types
+- const data: TargetType = rawResponse;
++ const data: TargetType = rawResponse as unknown as TargetType;"""
+        }
+    elif pattern_id == "COMP_ESLINT_ERROR":
+        return {
+            "commands": [
+                "npx eslint --fix .",
+                "git commit -am \"style: autofix lint violations\""
+            ],
+            "patch_diff": """// .eslintrc.json
+- "@typescript-eslint/no-unused-vars": "error"
++ "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]"""
+        }
+    elif pattern_id == "COMP_RUST_BORROW":
+        return {
+            "commands": [
+                "cargo check",
+                "cargo clippy -- -D warnings"
+            ],
+            "patch_diff": """// Clone or pass by reference to satisfy borrow checker:
+- process(value);
++ process(&value); // or value.clone()"""
+        }
+    elif pattern_id == "TEST_PYTEST_ASSERTION":
+        return {
+            "commands": [
+                "pytest -v -k \"test_name\" --showlocals",
+                "git status"
+            ],
+            "patch_diff": """# Update test expectation or fix production handler
+- assert response.status_code == 200
++ assert response.status_code == 201"""
+        }
+    elif pattern_id == "INFRA_DOCKER_COPY_NOT_FOUND":
+        return {
+            "commands": [
+                "npm run build  # Ensure build artifacts exist before container copy",
+                "docker build --no-cache -t app:test ."
+            ],
+            "patch_diff": """# Dockerfile / Workflow
++ - run: npm run build
+  - run: docker build -t app ."""
+        }
+    elif pattern_id == "INFRA_ENV_VAR_MISSING":
+        var_name = entity or "SECRET_OR_ENV_KEY"
+        return {
+            "commands": [
+                f"export {var_name}=\"<VALUE>\"",
+                f"echo '{var_name}=<VALUE>' >> .env"
+            ],
+            "patch_diff": f"""# .github/workflows/ci.yml
+  env:
++   {var_name}: ${{{{ secrets.{var_name} }}}}"""
+        }
+    elif pattern_id == "INFRA_SSL_CERT_EXPIRED":
+        return {
+            "commands": [
+                "curl -vI https://internal-registry.local",
+                "openssl s_client -connect internal-registry.local:443 -showcerts"
+            ],
+            "patch_diff": """# In runner configuration:
+- NODE_TLS_REJECT_UNAUTHORIZED=1
++ # CAUTION: Temporarily bypass in dev/staging while renewing certificate:
++ NODE_TLS_REJECT_UNAUTHORIZED=0"""
+        }
+    elif pattern_id == "INFRA_TF_IAM_ACCESS_DENIED":
+        return {
+            "commands": [
+                "terraform plan",
+                "aws iam get-role-policy --role-name <CI_ROLE> --policy-name <POLICY>"
+            ],
+            "patch_diff": """# Add missing s3:* action to IAM policy JSON:
++ "Action": [
++   "s3:GetObject",
++   "s3:PutObject"
++ ]"""
+        }
+    elif pattern_id in ("TRANSIENT_NPM_ECONNRESET", "TRANSIENT_CURL_TIMEOUT"):
+        return {
+            "commands": [
+                "gh run rerun <RUN_ID> --failed"
+            ],
+            "patch_diff": """# Retry step automatically on transient connection blip
+- run: npm ci
++ uses: nick-fields/retry@v3
++   with:
++     timeout_minutes: 5
++     max_attempts: 3
++     command: npm ci"""
+        }
+
+    # Category defaults
+    if action_type == "RERUN":
+        return {
+            "commands": [
+                "gh run rerun <RUN_ID> --failed",
+                "git commit --allow-empty -m \"ci: trigger retry on transient failure\" && git push"
+            ],
+            "patch_diff": """# Add auto-retry wrapper around flaky/transient CI step:
++ uses: nick-fields/retry@v3
++   with:
++     max_attempts: 2
++     command: npm test"""
+        }
+    else:
+        return {
+            "commands": [
+                "git status",
+                "git diff",
+                "npm test  # or pytest / cargo test locally"
+            ],
+            "patch_diff": """# Inspect failing test/lint step output and reconcile config:
+- failing_configuration: old_value
++ failing_configuration: corrected_value"""
+        }
 
 
 # 50+ Real-world Failure Patterns grouped by domain

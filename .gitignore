@@ -1,43 +1,107 @@
-# Python
+# ========================================================
+# Next.js & Turbopack
+# ========================================================
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# ========================================================
+# Node & Frontend Dependencies / Builds
+# ========================================================
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ========================================================
+# Python & Virtual Environments
+# ========================================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
+.venv/
 venv/
+env/
 ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
+*.egg-info/
 .eggs/
-lib/
-lib64/
+eggs/
+develop-eggs/
+build/
+downloads/
 parts/
 sdist/
 var/
 wheels/
-*.egg-info/
 .installed.cfg
 *.egg
+
+# ========================================================
+# Testing, Coverage & Quality Tools
+# ========================================================
 .pytest_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ========================================================
+# Databases & Local Storage
+# ========================================================
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
 *.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
 
-# Node / Frontend
-node_modules/
-frontend/node_modules/
-frontend/dist/
+# ========================================================
+# Environment Variables & Secrets
+# ========================================================
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# Keep example environment template tracked
+!.env.example
+
+# ========================================================
+# Logs & Temporary Files
+# ========================================================
+*.log
+logs/
+*.tmp
+*.temp
+temp/
+tmp/
+
+# ========================================================
+# Operating System & Editors
+# ========================================================
 .DS_Store
-*.local
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# IDE
+.DS_Store?
+._*
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
 .vscode/
 .idea/
 *.swp
 *.swo
+*~

@@ -1,6 +1,6 @@
 @echo off
-echo ===================================================
-echo Running TriageCI Benchmark Validation (20 Logs)
-echo ===================================================
-python -m pytest backend/tests/test_benchmark.py -v -s
+echo ========================================================
+echo Running TCT TriageCI Benchmark Validation (20 Logs)
+echo ========================================================
+bun run scripts/run-benchmark.ts
 pause

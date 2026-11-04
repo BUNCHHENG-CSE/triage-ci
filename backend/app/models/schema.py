@@ -5,8 +5,55 @@ from sqlalchemy.orm import relationship
 from pydantic import BaseModel, Field
 from app.models.database import Base
 
+from sqlalchemy import types
+
 def utc_now():
     return datetime.now(timezone.utc)
+
+class UTCDateTime(types.TypeDecorator):
+    """
+    Platform-independent DateTime type.
+    Stores as integer epoch milliseconds in SQLite for 100% Prisma Client compatibility,
+    and native DateTime with timezone in PostgreSQL.
+    """
+    impl = types.DateTime
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(types.BigInteger())
+        return dialect.type_descriptor(types.DateTime(timezone=True))
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if dialect.name == "sqlite":
+                if isinstance(value, (int, float)):
+                    return int(value)
+                if isinstance(value, datetime):
+                    if value.tzinfo is None:
+                        value = value.replace(tzinfo=timezone.utc)
+                    return int(value.timestamp() * 1000)
+                if isinstance(value, str):
+                    try:
+                        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                        return int(dt.timestamp() * 1000)
+                    except Exception:
+                        return value
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and dialect.name == "sqlite":
+            if isinstance(value, (int, float)):
+                return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except Exception:
+                    try:
+                        return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+                    except Exception:
+                        pass
+        return value
 
 # SQLAlchemy ORM Models
 class FailureCluster(Base):
@@ -23,8 +70,8 @@ class FailureCluster(Base):
     suggested_action_type = Column(String(32), nullable=False)  # RERUN or FIX
     suggested_direction = Column(Text, nullable=False)
     occurrence_count = Column(Integer, default=1)
-    first_seen = Column(DateTime, default=utc_now)
-    last_seen = Column(DateTime, default=utc_now, onupdate=utc_now)
+    first_seen = Column(UTCDateTime, default=utc_now)
+    last_seen = Column(UTCDateTime, default=utc_now, onupdate=utc_now)
     status = Column(String(32), default="ACTIVE")  # ACTIVE, RESOLVED, IGNORED
     affected_repos = Column(JSON, default=list)  # list of repo names
     
@@ -69,10 +116,14 @@ class FailureLog(Base):
     raw_log = Column(Text, nullable=True)
     pr_comment_markdown = Column(Text, nullable=True)
     
+    # One-Click Remediation Playbook (Exact CLI commands & Config Patches)
+    remediation_commands = Column(JSON, default=list, nullable=True)
+    remediation_patch = Column(Text, nullable=True)
+    
     cluster_id = Column(Integer, ForeignKey("failure_clusters.id"), nullable=True)
     cluster = relationship("FailureCluster", back_populates="logs")
     
-    created_at = Column(DateTime, default=utc_now, index=True)
+    created_at = Column(UTCDateTime, default=utc_now, index=True)
 
 
 # Pydantic Request / Response Schemas
@@ -120,6 +171,10 @@ class TriageResult(BaseModel):
     cluster_id: Optional[int] = None
     cluster_occurrence_count: int = 1
     created_at: Optional[datetime] = None
+
+    # One-Click Remediation Playbook
+    remediation_commands: List[str] = []
+    remediation_patch: Optional[str] = None
 
 class ClusterSummary(BaseModel):
     id: int

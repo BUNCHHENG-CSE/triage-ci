@@ -28,6 +28,8 @@ export type TriageResult = {
   total_raw_lines: number;
   reduction_percentage: number;
   pr_comment_markdown: string;
+  remediation_commands?: string[];
+  remediation_patch?: string;
   cluster_id?: number;
   cluster_occurrence_count: number;
   created_at?: string;
@@ -96,11 +98,44 @@ export type DashboardStats = {
     occurrences: number;
   };
   category_breakdown: Record<string, number>;
+  provider_breakdown?: Record<string, number>;
+  flakiness_index?: number;
+  runner_hours_saved?: number;
+  runner_cloud_spend_saved?: number;
+  top_culprits?: Array<{
+    id: number;
+    title: string;
+    category: string;
+    occurrences: number;
+    action_type: string;
+    status: string;
+    affected_repos: string[];
+  }>;
   hours_saved_total: number;
   dollars_saved_total: number;
   roi_pricing_model: {
     starter_repo_price_monthly: number;
     pro_team_price_monthly: number;
     scale_team_price_monthly: number;
+  };
+};
+
+export type SystemHealth = {
+  status: string;
+  service: string;
+  version: string;
+  uptime_seconds: number;
+  database: {
+    type: string;
+    status: string;
+    latency_ms: number;
+    error?: string | null;
+  };
+  engine: {
+    pattern_library_size: number;
+    taxonomies_supported: number;
+    llm_engine_status: string;
+    total_triaged_logs: number;
+    active_recurring_clusters: number;
   };
 };

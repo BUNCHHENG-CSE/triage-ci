@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { DollarSign, Clock, Users, TrendingUp, Sparkles, Check, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { DollarSign, Clock, Users, TrendingUp } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 export const RoiCalculator: React.FC = () => {
   // Configurable sliders
@@ -20,46 +22,51 @@ export const RoiCalculator: React.FC = () => {
   
   const dollarsSavedMonthly = Math.round(hoursSavedPerMonth * hourlyRate);
 
-  // Selected Plan: Team Pro ($99/mo) or Team Scale ($199/mo)
-  const recommendedPlanCost = teamSize <= 20 ? 99 : 199;
+  // Selected Plan: Team Pro ($99/mo) or Team Scale ($199/mo) or Starter ($29/mo)
+  const recommendedPlanCost = teamSize <= 8 ? 49 : teamSize <= 25 ? 99 : 199;
   const netMonthlyRoi = dollarsSavedMonthly > 0 
     ? Math.round(((dollarsSavedMonthly - recommendedPlanCost) / recommendedPlanCost) * 100) 
     : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs uppercase tracking-wider mb-1">
-          <DollarSign className="w-4 h-4" />
-          <span>Value & Pricing Model</span>
+      <Card className="p-4 space-y-2 border-border/80 bg-card/80 shadow-2xs">
+        <div className="flex items-center space-x-1.5 font-mono">
+          <Badge variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono text-[10px] gap-1 py-0.5">
+            <DollarSign className="w-3 h-3" />
+            <span>Value & Pricing Model</span>
+          </Badge>
         </div>
-        <h2 className="text-xl font-bold text-white">
+        <h2 className="text-base font-bold text-foreground tracking-tight font-mono">
           Engineering Hours Saved & ROI Calculator
         </h2>
-        <p className="text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
+        <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
           Anchored to engineering attention saved per week. Instead of 5–50 developers sifting through thousands of lines of Gradle dependency trees, ECS JSON dumps, or flaky timeouts, TriageCI delivers the exact root-cause attribution instantly.
         </p>
-      </div>
+      </Card>
 
       {/* Main Interactive Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Sliders Input Panel (7 cols) */}
-        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider border-b border-slate-800 pb-3">
-            Team Parameters (5–50 Person Teams)
-          </h3>
+        <Card className="lg:col-span-7 p-4 space-y-4 border-border/80 bg-card/80 shadow-2xs">
+          <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
+            <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider font-mono">
+              Team Parameters (5–50 Person Teams)
+            </h3>
+            <span className="text-[10px] text-muted-foreground font-mono">Real-time dynamic ROI</span>
+          </div>
 
           {/* Slider 1: Team Size */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-300 font-medium flex items-center space-x-1.5">
-                <Users className="w-4 h-4 text-rose-400" />
+              <span className="text-foreground font-medium flex items-center space-x-1.5">
+                <Users className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                 <span>Engineering Team Size</span>
               </span>
-              <span className="font-mono font-bold text-white bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                {teamSize} engineers
-              </span>
+              <Badge variant="outline" className="font-mono font-bold text-foreground text-xs">
+                {teamSize} developers
+              </Badge>
             </div>
             <input
               type="range"
@@ -68,25 +75,25 @@ export const RoiCalculator: React.FC = () => {
               step={1}
               value={teamSize}
               onChange={(e) => setTeamSize(Number(e.target.value))}
-              className="w-full accent-rose-500 cursor-pointer"
+              className="w-full accent-rose-500 cursor-pointer h-1.5 bg-secondary rounded-lg"
             />
-            <div className="flex justify-between text-[11px] text-slate-500 font-mono">
-              <span>5 engineers</span>
-              <span>25 engineers</span>
-              <span>50 engineers</span>
+            <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+              <span>5 devs (Starter)</span>
+              <span>25 devs (Team Pro)</span>
+              <span>50 devs (Team Scale)</span>
             </div>
           </div>
 
           {/* Slider 2: Failed Pipelines per day */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-300 font-medium flex items-center space-x-1.5">
-                <TrendingUp className="w-4 h-4 text-amber-400" />
+              <span className="text-foreground font-medium flex items-center space-x-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span>Failed Pipeline Runs per Day</span>
               </span>
-              <span className="font-mono font-bold text-white bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+              <Badge variant="outline" className="font-mono font-bold text-foreground text-xs">
                 {failedBuildsPerDay} failed runs/day
-              </span>
+              </Badge>
             </div>
             <input
               type="range"
@@ -95,25 +102,25 @@ export const RoiCalculator: React.FC = () => {
               step={1}
               value={failedBuildsPerDay}
               onChange={(e) => setFailedBuildsPerDay(Number(e.target.value))}
-              className="w-full accent-amber-500 cursor-pointer"
+              className="w-full accent-amber-500 cursor-pointer h-1.5 bg-secondary rounded-lg"
             />
-            <div className="flex justify-between text-[11px] text-slate-500 font-mono">
-              <span>2/day</span>
-              <span>20/day</span>
-              <span>40/day</span>
+            <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+              <span>2 / day</span>
+              <span>20 / day</span>
+              <span>40 / day</span>
             </div>
           </div>
 
           {/* Slider 3: Minutes spent investigating */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-300 font-medium flex items-center space-x-1.5">
-                <Clock className="w-4 h-4 text-rose-400" />
+              <span className="text-foreground font-medium flex items-center space-x-1.5">
+                <Clock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                 <span>Avg. Manual Triage Time per Failure</span>
               </span>
-              <span className="font-mono font-bold text-white bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+              <Badge variant="outline" className="font-mono font-bold text-foreground text-xs">
                 {minsPerInvestigation} minutes
-              </span>
+              </Badge>
             </div>
             <input
               type="range"
@@ -122,25 +129,25 @@ export const RoiCalculator: React.FC = () => {
               step={5}
               value={minsPerInvestigation}
               onChange={(e) => setMinsPerInvestigation(Number(e.target.value))}
-              className="w-full accent-rose-500 cursor-pointer"
+              className="w-full accent-rose-500 cursor-pointer h-1.5 bg-secondary rounded-lg"
             />
-            <div className="flex justify-between text-[11px] text-slate-500 font-mono">
-              <span>10 mins</span>
-              <span>25 mins</span>
-              <span>45 mins</span>
+            <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+              <span>10 mins (Light)</span>
+              <span>25 mins (Avg)</span>
+              <span>45 mins (Complex)</span>
             </div>
           </div>
 
           {/* Slider 4: Hourly Rate */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-300 font-medium flex items-center space-x-1.5">
-                <DollarSign className="w-4 h-4 text-emerald-400" />
+              <span className="text-foreground font-medium flex items-center space-x-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Avg. Engineering Hourly Cost</span>
               </span>
-              <span className="font-mono font-bold text-white bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                ${hourlyRate}/hour
-              </span>
+              <Badge variant="outline" className="font-mono font-bold text-foreground text-xs">
+                ${hourlyRate} / hour
+              </Badge>
             </div>
             <input
               type="range"
@@ -149,103 +156,149 @@ export const RoiCalculator: React.FC = () => {
               step={5}
               value={hourlyRate}
               onChange={(e) => setHourlyRate(Number(e.target.value))}
-              className="w-full accent-emerald-500 cursor-pointer"
+              className="w-full accent-emerald-500 cursor-pointer h-1.5 bg-secondary rounded-lg"
             />
-            <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+            <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
               <span>$50/hr</span>
               <span>$100/hr</span>
               <span>$150/hr</span>
             </div>
           </div>
-        </div>
+
+          {/* Before vs After comparison pill */}
+          <div className="p-3 rounded-lg bg-muted/20 border border-border/80 space-y-1.5 text-xs">
+            <div className="font-semibold text-foreground text-xs font-mono">Triage Velocity Impact:</div>
+            <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+              <div className="p-2 rounded-md bg-rose-500/5 border border-rose-500/20 text-rose-700 dark:text-rose-300">
+                <span className="block font-bold mb-0.5">WITHOUT TRIAGECI:</span>
+                <span>~{minsPerInvestigation} min wading through 1,500+ line logs</span>
+              </div>
+              <div className="p-2 rounded-md bg-emerald-500/5 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                <span className="block font-bold mb-0.5">WITH TRIAGECI:</span>
+                <span>~2 mins: instant attribution & safe rerun verdict</span>
+              </div>
+            </div>
+          </div>
+        </Card>
 
         {/* Right Output Panel: Calculations & Plan Anchor (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className="lg:col-span-5 space-y-3.5">
           {/* Savings Metric Card */}
-          <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950/30 border border-rose-500/30 rounded-2xl p-6 space-y-4 shadow-xl">
-            <div className="text-xs font-bold text-rose-400 uppercase tracking-wider">
-              Calculated Value Saved
+          <Card className="p-4 space-y-3.5 border-border/80 bg-card/90 shadow-2xs relative overflow-hidden">
+            <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider font-mono">
+              Net Value Reclaimed Monthly
             </div>
 
             <div className="space-y-1">
-              <div className="text-4xl font-extrabold text-white font-mono">
+              <div className="text-3xl font-extrabold text-foreground font-mono tracking-tight">
                 ${dollarsSavedMonthly.toLocaleString()}
-                <span className="text-sm font-normal text-slate-400"> / month</span>
+                <span className="text-xs font-normal text-muted-foreground font-sans"> / month</span>
               </div>
-              <p className="text-xs text-slate-300">
-                Net value of reclaimed engineering focus and avoided context switching.
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Reclaimed engineering focus and prevented developer context-switching loops.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800/80">
-              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                <span className="text-[11px] text-slate-400 block">Hours Saved / Week</span>
-                <span className="text-lg font-bold text-emerald-400 font-mono">
+            <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-border/70">
+              <div className="bg-muted/30 p-2.5 rounded-lg border border-border/70">
+                <span className="text-[10px] text-muted-foreground block font-mono">Hours / Week</span>
+                <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                   {hoursSavedPerWeek} hrs
                 </span>
               </div>
-              <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                <span className="text-[11px] text-slate-400 block">Hours Saved / Month</span>
-                <span className="text-lg font-bold text-emerald-400 font-mono">
+              <div className="bg-muted/30 p-2.5 rounded-lg border border-border/70">
+                <span className="text-[10px] text-muted-foreground block font-mono">Hours / Month</span>
+                <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                   {hoursSavedPerMonth} hrs
                 </span>
               </div>
             </div>
 
-            <div className="pt-2">
-              <div className="flex items-center justify-between text-xs bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-rose-300">
-                <span>Estimated Monthly ROI:</span>
-                <strong className="text-base text-white font-mono">+{netMonthlyRoi.toLocaleString()}%</strong>
+            <div className="pt-0.5">
+              <div className="flex items-center justify-between text-xs bg-rose-500/10 border border-rose-500/25 rounded-lg p-2.5 text-rose-800 dark:text-rose-300">
+                <span>Estimated Return (ROI):</span>
+                <strong className="text-base text-foreground dark:text-white font-mono font-extrabold">+{netMonthlyRoi.toLocaleString()}%</strong>
               </div>
             </div>
-          </div>
+          </Card>
 
-          {/* Pricing Tiers Card */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
-            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Anchored Pricing Tiers
+          {/* Pricing Tiers Card with Dynamic Highlight */}
+          <Card className="p-4 space-y-2.5 border-border/80 bg-card/80 shadow-2xs">
+            <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider font-mono">
+              Transparent Commercial Plans
             </h4>
 
             <div className="space-y-2 text-xs">
-              <div className={`p-3 rounded-xl border transition-all ${
-                teamSize <= 10 ? 'bg-slate-950 border-rose-500/40 shadow-sm' : 'border-slate-800'
+              {/* Starter Tier */}
+              <div className={`p-2.5 rounded-lg border transition-all ${
+                teamSize <= 8 
+                  ? 'bg-rose-500/10 border-rose-500/50 shadow-xs' 
+                  : 'bg-muted/30 border-border/80 opacity-80'
               }`}>
-                <div className="flex justify-between items-center font-semibold text-white">
-                  <span>Per-Repo Starter</span>
-                  <span className="font-mono text-rose-400">$29–49 / mo</span>
+                <div className="flex justify-between items-center font-bold text-foreground">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="font-mono text-xs">Per-Repo Starter</span>
+                    {teamSize <= 8 && (
+                      <Badge variant="default" className="text-[9px] px-1.5 py-0 bg-rose-500 text-white font-mono uppercase h-4">
+                        Recommended
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="font-mono text-rose-600 dark:text-rose-400 text-xs">$29–$49 / mo</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Single core repository, unlimited failures triaged.
+                <p className="text-[10.5px] text-muted-foreground mt-0.5">
+                  Single core repository, unlimited failure logs, sub-second noise pruning.
                 </p>
               </div>
 
-              <div className={`p-3 rounded-xl border transition-all ${
-                teamSize > 10 && teamSize <= 25 ? 'bg-slate-950 border-rose-500/40 shadow-sm' : 'border-slate-800'
+              {/* Team Pro Tier */}
+              <div className={`p-2.5 rounded-lg border transition-all ${
+                teamSize > 8 && teamSize <= 25 
+                  ? 'bg-rose-500/10 border-rose-500/50 shadow-xs' 
+                  : 'bg-muted/30 border-border/80 opacity-80'
               }`}>
-                <div className="flex justify-between items-center font-semibold text-white">
-                  <span>Team Pro (Most Popular)</span>
-                  <span className="font-mono text-rose-400">$99 / mo</span>
+                <div className="flex justify-between items-center font-bold text-foreground">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="font-mono text-xs">Team Pro (Most Popular)</span>
+                    {teamSize > 8 && teamSize <= 25 && (
+                      <Badge variant="default" className="text-[9px] px-1.5 py-0 bg-rose-500 text-white font-mono uppercase h-4">
+                        Recommended
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="font-mono text-rose-600 dark:text-rose-400 text-xs">$99 / mo</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Teams of 5–25 engineers, multi-repo clustering, Slack & PR alerts.
+                <p className="text-[10.5px] text-muted-foreground mt-0.5">
+                  Teams of 5–25 engineers, multi-repo cluster intelligence, automated PR comment bot.
                 </p>
               </div>
 
-              <div className={`p-3 rounded-xl border transition-all ${
-                teamSize > 25 ? 'bg-slate-950 border-rose-500/40 shadow-sm' : 'border-slate-800'
+              {/* Team Scale Tier */}
+              <div className={`p-2.5 rounded-lg border transition-all ${
+                teamSize > 25 
+                  ? 'bg-rose-500/10 border-rose-500/50 shadow-xs' 
+                  : 'bg-muted/30 border-border/80 opacity-80'
               }`}>
-                <div className="flex justify-between items-center font-semibold text-white">
-                  <span>Team Scale</span>
-                  <span className="font-mono text-rose-400">$199 / mo</span>
+                <div className="flex justify-between items-center font-bold text-foreground">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="font-mono text-xs">Team Scale</span>
+                    {teamSize > 25 && (
+                      <Badge variant="default" className="text-[9px] px-1.5 py-0 bg-rose-500 text-white font-mono uppercase h-4">
+                        Recommended
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="font-mono text-rose-600 dark:text-rose-400 text-xs">$199 / mo</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Teams of 25–50 engineers, custom pattern catalogs, priority ingestion.
+                <p className="text-[10.5px] text-muted-foreground mt-0.5">
+                  Teams of 25–50 engineers, custom pattern catalogs, priority log ingestion webhooks.
                 </p>
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     </div>
   );
 };
+

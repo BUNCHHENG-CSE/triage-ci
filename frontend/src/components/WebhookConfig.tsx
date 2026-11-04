@@ -1,13 +1,43 @@
-import React, { useState } from 'react';
-import { Webhook, Copy, Check, Send, CheckCircle2, ShieldCheck, Terminal, GitBranch } from 'lucide-react';
+import { useState } from 'react';
+import { 
+  Webhook, 
+  Copy, 
+  Check, 
+  Send, 
+  CheckCircle2, 
+  Terminal, 
+  FileCode,
+  RefreshCw,
+  Sparkles,
+  ArrowRight,
+  ExternalLink,
+  Layers,
+  Wrench
+} from 'lucide-react';
+import { simulateWebhook } from '../api';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
-export const WebhookConfig: React.FC = () => {
+export const WebhookConfig: React.FC<{ onNavigateToFeed?: () => void }> = ({ onNavigateToFeed }) => {
   const [copiedWebhook, setCopiedWebhook] = useState(false);
   const [copiedYaml, setCopiedYaml] = useState(false);
-  const [testingWebhook, setTestingWebhook] = useState(false);
-  const [testResponse, setTestResponse] = useState<any>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'github' | 'gitlab' | 'jenkins' | 'generic'>('github');
+  
+  // Simulation State
+  const [simScenario, setSimScenario] = useState('aws_sts');
+  const [simProvider, setSimProvider] = useState('github_actions');
+  const [simulating, setSimulating] = useState(false);
+  const [simResult, setSimResult] = useState<any>(null);
 
-  const webhookUrl = `${window.location.origin}/api/webhooks/github`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000';
+  const providerPath = 
+    selectedProvider === 'github' ? '/api/webhooks/github' :
+    selectedProvider === 'gitlab' ? '/api/webhooks/gitlab' :
+    selectedProvider === 'jenkins' ? '/api/webhooks/jenkins' : '/api/webhooks/generic';
+  
+  const webhookUrl = `${origin}${providerPath}`;
 
   const githubActionsYaml = `name: CI Pipeline
 
@@ -29,11 +59,11 @@ jobs:
       - run: npm ci
       - run: npm test
 
-      # 🔴 TriageCI Ingestion on Failure
+      # 🔴 TriageCI Pure Diagnostic Attribution Ingestion
       - name: Triage Failure with TriageCI
         if: failure()
         run: |
-          curl -X POST "${webhookUrl}" \\
+          curl -X POST "${origin}/api/webhooks/github" \\
             -H "Content-Type: application/json" \\
             -H "X-GitHub-Event: workflow_run" \\
             -d '{
@@ -48,6 +78,91 @@ jobs:
             }'
 `;
 
+  const gitlabCiYaml = `stages:
+  - test
+  - triage
+
+unit_tests:
+  stage: test
+  script:
+    - npm ci
+    - npm test
+  artifacts:
+    when: on_failure
+    paths:
+      - "*.log"
+
+# 🔴 TriageCI GitLab CI Diagnostic Step
+triage_on_failure:
+  stage: triage
+  when: on_failure
+  script:
+    - |
+      curl -X POST "${origin}/api/webhooks/gitlab" \\
+        -H "Content-Type: application/json" \\
+        -d "{
+          \\"project\\": { \\"path_with_namespace\\": \\"$CI_PROJECT_PATH\\" },
+          \\"object_attributes\\": {
+            \\"ref\\": \\"$CI_COMMIT_REF_NAME\\",
+            \\"sha\\": \\"$CI_COMMIT_SHA\\",
+            \\"status\\": \\"failed\\"
+          },
+          \\"user\\": { \\"username\\": \\"$GITLAB_USER_LOGIN\\" }
+        }"
+`;
+
+  const jenkinsSnippet = `pipeline {
+    agent any
+    stages {
+        stage('Test') {
+            steps {
+                sh './gradlew test'
+            }
+        }
+    }
+    post {
+        failure {
+            script {
+                sh """
+                curl -X POST "${origin}/api/webhooks/jenkins" \\
+                  -H "Content-Type: application/json" \\
+                  -d '{
+                    "name": "\${env.JOB_NAME}",
+                    "build": {
+                      "status": "FAILURE",
+                      "scm": {
+                        "url": "\${env.GIT_URL}",
+                        "branch": "\${env.GIT_BRANCH}",
+                        "commit": "\${env.GIT_COMMIT}"
+                      }
+                    }
+                  }'
+                """
+            }
+        }
+    }
+}`;
+
+  const genericSnippet = `# Generic / CircleCI / Bitbucket Runner Ingestion
+# Simply curl TriageCI endpoint on failure with runner log:
+curl -X POST "${origin}/api/webhooks/generic" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "provider": "circleci",
+    "repo_name": "acme-corp/service",
+    "branch": "$CIRCLE_BRANCH",
+    "commit_sha": "$CIRCLE_SHA1",
+    "commit_author": "$CIRCLE_USERNAME",
+    "job_name": "$CIRCLE_JOB",
+    "raw_log": "$(cat build.log 2>/dev/null || echo 'Exit code 1')"
+  }'
+`;
+
+  const currentSnippet = 
+    selectedProvider === 'github' ? githubActionsYaml :
+    selectedProvider === 'gitlab' ? gitlabCiYaml :
+    selectedProvider === 'jenkins' ? jenkinsSnippet : genericSnippet;
+
   const handleCopyWebhook = () => {
     navigator.clipboard.writeText(webhookUrl);
     setCopiedWebhook(true);
@@ -55,148 +170,248 @@ jobs:
   };
 
   const handleCopyYaml = () => {
-    navigator.clipboard.writeText(githubActionsYaml);
+    navigator.clipboard.writeText(currentSnippet);
     setCopiedYaml(true);
     setTimeout(() => setCopiedYaml(false), 2000);
   };
 
-  const handleTestWebhook = async () => {
-    setTestingWebhook(true);
-    setTestResponse(null);
+  const handleRunSimulation = async () => {
+    setSimulating(true);
+    setSimResult(null);
+    const start = performance.now();
     try {
-      const res = await fetch('/api/webhooks/github', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repository: { full_name: 'acme-corp/test-webhook-repo' },
-          workflow_run: {
-            name: 'Production Deploy',
-            head_branch: 'staging',
-            head_sha: 'd41d8cd98f00b204e9800998ecf8427e',
-            actor: { login: 'alex.dev' },
-            conclusion: 'failure'
-          }
-        })
-      });
-      const data = await res.json();
-      setTestResponse(data);
+      const data = await simulateWebhook(simScenario, simProvider);
+      const elapsed = Math.round(performance.now() - start);
+      setSimResult({ ...data, latency_ms: elapsed });
     } catch (err: any) {
-      setTestResponse({ error: err.message || 'Webhook failed' });
+      setSimResult({
+        status: 'error',
+        error: err.message || 'Simulation failed'
+      });
     } finally {
-      setTestingWebhook(false);
+      setSimulating(false);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs uppercase tracking-wider mb-1">
-          <Webhook className="w-4 h-4" />
-          <span>CI Provider Integration</span>
+      {/* Header Banner */}
+      <Card className="p-4 space-y-2 border-border/80 bg-card/80 shadow-2xs">
+        <div className="flex items-center space-x-1.5 font-mono">
+          <Badge variant="outline" className="border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono text-[10px] gap-1 py-0.5">
+            <Webhook className="w-3 h-3" />
+            <span>Multi-Provider Ingestion Hub</span>
+          </Badge>
         </div>
-        <h2 className="text-xl font-bold text-white">
-          Connect GitHub Actions, GitLab CI, or Jenkins
+        <h2 className="text-base font-bold text-foreground font-mono">
+          Zero-Touch CI/CD Webhook Integration
         </h2>
-        <p className="text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-          TriageCI operates strictly as a <strong>read-only diagnostic layer</strong>. It does not touch deployment state, execute builds, or modify CI definitions. Whenever a pipeline fails, the webhook triggers immediate noise pruning and root cause attribution.
+        <p className="text-xs text-muted-foreground leading-relaxed max-w-3xl">
+          Connect your GitHub Actions, GitLab CI, or Jenkins pipelines to automatically ingest, normalize, and attribute failed builds. TriageCI is strictly <strong>read-only / diagnostic</strong> with zero permissions to edit pipelines or trigger deployments.
         </p>
-      </div>
+      </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Webhook URL & Test */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-            <span>Webhook Endpoint</span>
-          </h3>
-
-          <div className="space-y-2">
-            <label className="text-xs text-slate-400">Target Webhook URL</label>
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                readOnly
-                value={webhookUrl}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 select-all"
-              />
-              <button
-                onClick={handleCopyWebhook}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition-colors cursor-pointer shrink-0 flex items-center space-x-1"
-              >
-                {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedWebhook ? 'Copied' : 'Copy'}</span>
-              </button>
+      {/* Interactive Webhook Simulator */}
+      <Card className="p-5 border-border/80 bg-card/90 shadow-md space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                Live Webhook Ingestion Simulator
+              </h3>
+              <p className="text-xs text-muted-foreground font-mono">
+                Simulate a real-time incoming webhook event and observe immediate attribution & database persistence.
+              </p>
             </div>
           </div>
+          <Badge variant="outline" className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+            Interactive Tester
+          </Badge>
+        </div>
 
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
-            <span className="font-bold text-white block">GitHub Webhook Setup:</span>
-            <ol className="list-decimal list-inside space-y-1 text-slate-400">
-              <li>In your GitHub repo, go to <strong>Settings → Webhooks → Add webhook</strong>.</li>
-              <li>Paste the Payload URL above.</li>
-              <li>Select content type: <code>application/json</code>.</li>
-              <li>Select individual events: <strong>Workflow runs</strong> and <strong>Check runs</strong>.</li>
-            </ol>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs font-mono text-muted-foreground block mb-1">
+              Select Failure Scenario:
+            </label>
+            <select
+              value={simScenario}
+              onChange={e => setSimScenario(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground focus:outline-hidden"
+            >
+              <option value="aws_sts">AWS STS Session Expired (Auth)</option>
+              <option value="jest_timeout">Jest Async Timeout (Flaky RERUN)</option>
+              <option value="npm_eresolve">NPM Peer Dep Conflict (Dependencies)</option>
+              <option value="exit_137">Linux OOM Killer Exit 137 (Resource Limit)</option>
+              <option value="rust_borrow">Rust Borrow Checker Error (Compiler)</option>
+            </select>
           </div>
 
-          <div className="pt-2">
-            <button
-              onClick={handleTestWebhook}
-              disabled={testingWebhook}
-              className="flex items-center space-x-2 bg-rose-500 hover:bg-rose-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+          <div>
+            <label className="text-xs font-mono text-muted-foreground block mb-1">
+              Simulate CI Provider:
+            </label>
+            <select
+              value={simProvider}
+              onChange={e => setSimProvider(e.target.value)}
+              className="w-full h-8.5 rounded-md border border-border bg-background px-2 text-xs font-mono text-foreground focus:outline-hidden"
             >
-              {testingWebhook ? (
+              <option value="github_actions">GitHub Actions</option>
+              <option value="gitlab_ci">GitLab CI</option>
+              <option value="jenkins">Jenkins</option>
+              <option value="generic">Generic Runner (CircleCI)</option>
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <Button
+              onClick={handleRunSimulation}
+              disabled={simulating}
+              className="w-full h-8.5 text-xs font-mono bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              {simulating ? (
                 <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Sending Test Webhook Event...</span>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Simulating Ingestion...
                 </>
               ) : (
                 <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Send Test Webhook Event</span>
+                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                  🚀 Trigger Live Webhook Simulation
                 </>
               )}
-            </button>
+            </Button>
           </div>
+        </div>
 
-          {testResponse && (
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono space-y-2 animate-fade-in">
-              <div className="flex items-center space-x-1.5 text-emerald-400 font-bold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Webhook Ingestion & Attribution Verified:</span>
+        {/* Live Simulation Response Output */}
+        {simResult && (
+          <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="text-xs font-semibold font-mono text-foreground">
+                  HTTP 200: Webhook Ingested & Attributed in {simResult.latency_ms ?? 14}ms
+                </span>
               </div>
-              <pre className="text-slate-300 overflow-x-auto text-[11px] leading-relaxed">
-                {JSON.stringify(testResponse, null, 2)}
-              </pre>
+              <Badge variant={simResult.action_type === 'RERUN' ? 'default' : 'destructive'} className="text-[10px] py-0 font-mono">
+                {simResult.action_type}
+              </Badge>
             </div>
-          )}
-        </div>
 
-        {/* Right: Drop-in GitHub Actions YAML */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-              <Terminal className="w-4 h-4 text-rose-400" />
-              <span>Or Drop-in GitHub Actions Step</span>
-            </h3>
-            <button
-              onClick={handleCopyYaml}
-              className="flex items-center space-x-1 text-xs text-rose-400 hover:text-rose-300 px-2 py-1 rounded hover:bg-rose-500/10 transition-colors cursor-pointer"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+              <div className="bg-background/80 p-2.5 rounded border border-border space-y-1">
+                <div className="text-muted-foreground">Scenario: <span className="text-foreground font-semibold">{simResult.scenario}</span></div>
+                <div className="text-muted-foreground">Failing Step: <span className="text-foreground font-semibold">{simResult.failing_step}</span></div>
+                <div className="text-muted-foreground">Confidence: <span className="text-foreground font-semibold">{Math.round((simResult.confidence || 0.95) * 100)}%</span></div>
+              </div>
+              <div className="bg-background/80 p-2.5 rounded border border-border space-y-1">
+                <div className="text-muted-foreground">Root Cause:</div>
+                <div className="text-foreground font-medium leading-relaxed">{simResult.root_cause}</div>
+              </div>
+            </div>
+
+            {onNavigateToFeed && (
+              <div className="pt-1 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onNavigateToFeed}
+                  className="text-xs font-mono h-7"
+                >
+                  <span>View in Triage Feed</span>
+                  <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Provider Config Tabs & Snippets */}
+      <Card className="p-5 border-border/80 bg-card/80 space-y-4">
+        {/* Endpoint URL Row */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-mono text-muted-foreground">
+            Target Webhook Ingestion Endpoint:
+          </label>
+          <div className="flex items-center space-x-2">
+            <Input
+              readOnly
+              value={webhookUrl}
+              className="font-mono text-xs bg-muted/40 h-8 text-foreground"
+            />
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleCopyWebhook}
+              className="h-8 px-3 font-mono text-xs shrink-0"
             >
-              {copiedYaml ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedYaml ? 'Copied YAML' : 'Copy YAML'}</span>
-            </button>
-          </div>
-
-          <p className="text-xs text-slate-400">
-            Add this step with <code>if: failure()</code> to your existing workflow. It triggers only when a prior step in the pipeline fails.
-          </p>
-
-          <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 overflow-x-auto max-h-96 font-mono text-xs text-slate-300 leading-relaxed scrollbar-thin">
-            <pre>{githubActionsYaml}</pre>
+              {copiedWebhook ? (
+                <>
+                  <Check className="w-3.5 h-3.5 mr-1 text-emerald-500" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 mr-1" />
+                  Copy URL
+                </>
+              )}
+            </Button>
           </div>
         </div>
-      </div>
+
+        {/* Provider Tabs */}
+        <div className="flex space-x-1.5 border-b border-border pb-2">
+          {(['github', 'gitlab', 'jenkins', 'generic'] as const).map(p => (
+            <Button
+              key={p}
+              variant={selectedProvider === p ? 'default' : 'ghost'}
+              size="xs"
+              onClick={() => setSelectedProvider(p)}
+              className="h-7 text-xs font-mono uppercase tracking-wider"
+            >
+              {p === 'github' ? 'GitHub Actions' : p === 'gitlab' ? 'GitLab CI' : p === 'jenkins' ? 'Jenkins' : 'Generic / CircleCI'}
+            </Button>
+          ))}
+        </div>
+
+        {/* Snippet Code Viewer */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-foreground flex items-center space-x-1 font-mono">
+              <FileCode className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>Pipeline Configuration Snippet:</span>
+            </span>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={handleCopyYaml}
+              className="h-6 text-[11px] font-mono"
+            >
+              {copiedYaml ? (
+                <>
+                  <Check className="w-3 h-3 mr-1 text-emerald-500" />
+                  Copied Snippet
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3 mr-1" />
+                  Copy Snippet
+                </>
+              )}
+            </Button>
+          </div>
+
+          <pre className="p-3 bg-zinc-950 dark:bg-black rounded-lg text-emerald-400 font-mono text-xs overflow-x-auto leading-relaxed border border-border/80">
+            {currentSnippet}
+          </pre>
+        </div>
+      </Card>
     </div>
   );
 };

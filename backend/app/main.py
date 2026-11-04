@@ -9,6 +9,8 @@ from app.api.clusters import router as clusters_router
 from app.api.benchmark import router as benchmark_router
 from app.api.webhooks import router as webhooks_router
 from app.api.stats import router as stats_router
+from app.api.notifications import router as notifications_router
+from app.api.health import router as health_router
 from app.data.benchmark_data import BENCHMARK_CASES
 from app.core.triage_engine import triage_engine
 from app.models.schema import TriageRequest
@@ -187,6 +189,8 @@ app.include_router(clusters_router)
 app.include_router(benchmark_router)
 app.include_router(webhooks_router)
 app.include_router(stats_router)
+app.include_router(notifications_router)
+app.include_router(health_router)
 
 @app.get("/")
 def health_check():

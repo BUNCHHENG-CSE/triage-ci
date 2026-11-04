@@ -46,14 +46,25 @@ class TriageEngine:
         suggested_direction = analysis.get("suggested_direction") or "Check step error output."
         confidence_score = float(analysis.get("confidence_score") or 0.90)
 
-        # Step 5: Clustering & Fingerprint
+        # Step 5: Clustering & Fingerprint & Remediation Playbook
         if pattern_match:
             fingerprint = pattern_match.fingerprint
             cluster_title = pattern_match.title
+            remediation_commands = pattern_match.remediation_commands
+            remediation_patch = pattern_match.remediation_patch
         else:
             safe_step = failing_step.lower().replace(" ", "_")[:30]
             fingerprint = f"cluster:{category.lower()}:{safe_step}"
             cluster_title = f"{category}: {failing_step}"
+            from app.core.pattern_library import get_remediation_playbook
+            fallback_playbook = get_remediation_playbook(
+                pattern_id="GENERIC",
+                category=category,
+                action_type=action_type,
+                entities={"entity": safe_step}
+            )
+            remediation_commands = fallback_playbook.get("commands", [])
+            remediation_patch = fallback_playbook.get("patch_diff")
 
         cluster, occurrence_count = get_or_create_cluster(
             db=db,
@@ -108,6 +119,8 @@ class TriageEngine:
             total_raw_lines=window.total_raw_lines,
             raw_log=request.raw_log[:50000],  # safeguard max size in db
             pr_comment_markdown=pr_comment,
+            remediation_commands=remediation_commands,
+            remediation_patch=remediation_patch,
             cluster_id=cluster.id
         )
         db.add(db_log)
@@ -136,6 +149,8 @@ class TriageEngine:
             total_raw_lines=window.total_raw_lines,
             reduction_percentage=window.reduction_percentage,
             pr_comment_markdown=pr_comment,
+            remediation_commands=remediation_commands,
+            remediation_patch=remediation_patch,
             cluster_id=cluster.id,
             cluster_occurrence_count=occurrence_count,
             created_at=db_log.created_at
