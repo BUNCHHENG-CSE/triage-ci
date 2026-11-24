@@ -1,16 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Send, 
-  Check, 
-  AlertCircle, 
-  Download, 
-  Share2, 
-  Copy, 
-  FileText, 
-  Terminal,
-  ExternalLink
+import {
+  Check,
+  AlertCircle,
+  Download,
+  Share2,
 } from 'lucide-react';
 import type { TriageResult } from '../types';
 import { dispatchSlackAlert, dispatchDiscordAlert } from '../api';

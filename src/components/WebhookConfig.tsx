@@ -1,20 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  Webhook, 
-  Copy, 
-  Check, 
-  Send, 
-  CheckCircle2, 
-  Terminal, 
+import {
+  Webhook,
+  Copy,
+  Check,
+  Send,
+  CheckCircle2,
   FileCode,
   RefreshCw,
   Sparkles,
   ArrowRight,
-  ExternalLink,
-  Layers,
-  Wrench
 } from 'lucide-react';
 import { simulateWebhook } from '../api';
 import { Card } from '@/components/ui/card';

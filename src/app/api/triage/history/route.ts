@@ -46,7 +46,8 @@ export async function GET(req: NextRequest) {
 
     const logs = await prisma.failureLog.findMany({
       where,
-      include: { cluster: true },
+      omit: { rawLog: true },
+      include: { cluster: { select: { occurrenceCount: true } } },
       orderBy: { createdAt: 'desc' },
       skip: offset,
       take: limit,

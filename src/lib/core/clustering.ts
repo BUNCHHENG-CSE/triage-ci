@@ -1,6 +1,15 @@
 import { prisma } from '../db';
 import { FailureCluster } from '@prisma/client';
 
+function parseRepos(raw: string | null | undefined): string[] {
+  try {
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getOrCreateCluster(params: {
   fingerprint: string;
   title: string;
@@ -10,50 +19,38 @@ export async function getOrCreateCluster(params: {
   repoName: string;
 }): Promise<{ cluster: FailureCluster; occurrenceCount: number }> {
   const { fingerprint, title, category, suggestedActionType, suggestedDirection, repoName } = params;
+  const now = new Date();
 
-  const existing = await prisma.failureCluster.findUnique({
+  // Atomic upsert: avoids the unique-constraint race when concurrent webhooks
+  // report the same fingerprint (previously find-then-create → 500).
+  let cluster = await prisma.failureCluster.upsert({
     where: { fingerprint },
-  });
-
-  if (existing) {
-    let affectedReposList: string[] = [];
-    try {
-      affectedReposList = JSON.parse(existing.affectedRepos || '[]');
-    } catch {
-      affectedReposList = [];
-    }
-
-    if (repoName && !affectedReposList.includes(repoName)) {
-      affectedReposList.push(repoName);
-    }
-
-    const updated = await prisma.failureCluster.update({
-      where: { id: existing.id },
-      data: {
-        occurrenceCount: { increment: 1 },
-        lastSeen: new Date(),
-        affectedRepos: JSON.stringify(affectedReposList),
-      },
-    });
-
-    return { cluster: updated, occurrenceCount: updated.occurrenceCount };
-  }
-
-  // Create new cluster
-  const created = await prisma.failureCluster.create({
-    data: {
+    create: {
       fingerprint,
       title,
       category,
       suggestedActionType,
       suggestedDirection,
       occurrenceCount: 1,
-      firstSeen: new Date(),
-      lastSeen: new Date(),
+      firstSeen: now,
+      lastSeen: now,
       status: 'ACTIVE',
       affectedRepos: JSON.stringify(repoName ? [repoName] : []),
     },
+    update: {
+      occurrenceCount: { increment: 1 },
+      lastSeen: now,
+    },
   });
 
-  return { cluster: created, occurrenceCount: 1 };
+  const repos = parseRepos(cluster.affectedRepos);
+  if (repoName && !repos.includes(repoName)) {
+    repos.push(repoName);
+    cluster = await prisma.failureCluster.update({
+      where: { id: cluster.id },
+      data: { affectedRepos: JSON.stringify(repos) },
+    });
+  }
+
+  return { cluster, occurrenceCount: cluster.occurrenceCount };
 }

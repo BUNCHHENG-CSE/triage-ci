@@ -5,46 +5,35 @@ import { seedInitialDemoData } from '@/lib/seed';
 export async function GET() {
   try {
     // Check if initial seeding needed
-    const totalCount = await prisma.failureLog.count();
-    if (totalCount === 0) {
+    if ((await prisma.failureLog.findFirst({ select: { id: true } })) === null) {
       await seedInitialDemoData();
     }
 
-    const totalTriaged = await prisma.failureLog.count();
-    const totalClusters = await prisma.failureCluster.count();
+    const [totalTriaged, totalClusters, actionGroups, topClusters, categoryGroups, providerGroups] =
+      await Promise.all([
+        prisma.failureLog.count(),
+        prisma.failureCluster.count(),
+        prisma.failureLog.groupBy({ by: ['actionType'], _count: { id: true } }),
+        prisma.failureCluster.findMany({ orderBy: { occurrenceCount: 'desc' }, take: 5 }),
+        prisma.failureLog.groupBy({ by: ['rootCauseCategory'], _count: { id: true } }),
+        prisma.failureLog.groupBy({ by: ['provider'], _count: { id: true } }),
+      ]);
 
-    const rerunCount = await prisma.failureLog.count({
-      where: { actionType: 'RERUN' },
-    });
-    const fixCount = await prisma.failureLog.count({
-      where: { actionType: 'FIX' },
-    });
+    const actionCounts: Record<string, number> = {};
+    for (const g of actionGroups) actionCounts[g.actionType] = g._count.id;
+    const rerunCount = actionCounts.RERUN ?? 0;
+    const fixCount = actionCounts.FIX ?? 0;
     const totalActions = rerunCount + fixCount;
 
     const flakinessIndex =
       Math.round((rerunCount / Math.max(1, totalActions)) * 1000) / 10;
-
-    const topClusters = await prisma.failureCluster.findMany({
-      orderBy: { occurrenceCount: 'desc' },
-      take: 5,
-    });
     const topCluster = topClusters[0] || null;
 
-    // Category breakdown
-    const categoryGroups = await prisma.failureLog.groupBy({
-      by: ['rootCauseCategory'],
-      _count: { id: true },
-    });
     const categoryCounts: Record<string, number> = {};
     for (const g of categoryGroups) {
       categoryCounts[g.rootCauseCategory] = g._count.id;
     }
 
-    // Provider breakdown
-    const providerGroups = await prisma.failureLog.groupBy({
-      by: ['provider'],
-      _count: { id: true },
-    });
     const providerCounts: Record<string, number> = {};
     for (const g of providerGroups) {
       providerCounts[g.provider] = g._count.id;

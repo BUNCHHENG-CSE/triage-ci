@@ -1,9 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { triageEngine } from '@/lib/core/triage-engine';
+
+function verifySignature(body: string, signature: string | null, secret: string): boolean {
+  if (!signature?.startsWith('sha256=')) return false;
+  const expected = Buffer.from(
+    'sha256=' + createHmac('sha256', secret).update(body).digest('hex')
+  );
+  const received = Buffer.from(signature);
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json().catch(() => ({}));
+    const rawBody = await req.text();
+    const secret = process.env.GITHUB_WEBHOOK_SECRET;
+    if (secret && !verifySignature(rawBody, req.headers.get('x-hub-signature-256'), secret)) {
+      return NextResponse.json({ detail: 'Invalid webhook signature' }, { status: 401 });
+    }
+
+    let payload: any = {};
+    try {
+      payload = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      payload = {};
+    }
     const eventType = req.headers.get('x-github-event') || payload.event_type || 'workflow_run';
 
     const repoInfo = payload.repository || {};
